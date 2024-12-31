@@ -4,5 +4,9 @@
     <PackageId>RabbitMQ.Next.TopologyBuilder.Abstractions</PackageId>
     <RootNamespace>RabbitMQ.Next.TopologyBuilder</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+  </ItemGroup>
   
 </Project>

@@ -1,5 +1,4 @@
-﻿using System.Globalization;
-using BenchmarkDotNet.Columns;
+using System.Globalization;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Engines;
@@ -7,6 +6,7 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using Perfolizer.Horology;
+using Perfolizer.Metrology;
 
 namespace RabbitMQ.Next.Benchmarks;
 
