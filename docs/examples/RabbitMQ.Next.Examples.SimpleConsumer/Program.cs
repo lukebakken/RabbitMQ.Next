@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using RabbitMQ.Next;
@@ -14,7 +14,7 @@ await using var connection = ConnectionBuilder.Default
     .Build();
 
 await using var consumer = connection.Consumer(
-builder => builder
+    builder => builder
         .BindToQueue("my-queue")
         .PrefetchCount(10));
 
@@ -22,20 +22,21 @@ Console.WriteLine("Consumer created. Press Ctrl+C to exit.");
 
 using var cancellation = new CancellationTokenSource();
 
-MonitorKeypressAsync(cancellation);
+Task keypressTask = MonitorKeypressAsync(cancellation);
 
 await consumer.ConsumeAsync((message, content) =>
 {
     Console.WriteLine($"[{DateTimeOffset.Now.TimeOfDay}] Message received via '{message.Exchange}' exchange: {content.Get<string>()}");
-} ,cancellation.Token);
+}, cancellation.Token);
 
+await keypressTask;
 
 static Task MonitorKeypressAsync(CancellationTokenSource cancellation)
 {
     void WaitForInput()
     {
         ConsoleKeyInfo key;
-        do 
+        do
         {
             key = Console.ReadKey(true);
 

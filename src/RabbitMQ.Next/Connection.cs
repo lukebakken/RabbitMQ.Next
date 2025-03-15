@@ -4,9 +4,9 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
-using RabbitMQ.Next.Exceptions;
 using RabbitMQ.Next.Buffers;
 using RabbitMQ.Next.Channels;
+using RabbitMQ.Next.Exceptions;
 using RabbitMQ.Next.Sockets;
 using RabbitMQ.Next.Transport;
 using RabbitMQ.Next.Transport.Methods.Connection;
@@ -16,7 +16,7 @@ namespace RabbitMQ.Next;
 
 internal class Connection : IConnection
 {
-    private readonly SemaphoreSlim connectionStateLock = new (1, 1);
+    private readonly SemaphoreSlim connectionStateLock = new(1, 1);
     private readonly ChannelPool channelPool;
     private readonly ConnectionDetails connectionDetails;
     private readonly Channel<IMemoryAccessor> socketSender;
@@ -33,7 +33,7 @@ internal class Connection : IConnection
         // (frame header + frame payload + frame-end)
         var bufferSize = ProtocolConstants.FrameHeaderSize + settings.MaxFrameSize + ProtocolConstants.FrameEndSize;
         this.memoryPool = new DefaultObjectPool<byte[]>(new MemoryPoolPolicy(bufferSize), 100);
-        
+
         this.connectionDetails = new ConnectionDetails(settings);
         this.socketSender = System.Threading.Channels.Channel.CreateBounded<IMemoryAccessor>(new BoundedChannelOptions(100)
         {
@@ -42,7 +42,7 @@ internal class Connection : IConnection
             SingleWriter = false,
             AllowSynchronousContinuations = false,
         });
-            
+
         this.State = ConnectionState.Closed;
         this.channelPool = new ChannelPool(this.CreateChannel);
     }
@@ -53,14 +53,14 @@ internal class Connection : IConnection
     {
         await this.EnsureConnectionOpenAsync(cancellation).ConfigureAwait(false);
     }
-    
+
     public async Task<IChannel> OpenChannelAsync(CancellationToken cancellation = default)
     {
         await this.EnsureConnectionOpenAsync(cancellation).ConfigureAwait(false);
 
         var channel = this.channelPool.Create();
         await channel.SendAsync<Transport.Methods.Channel.OpenMethod, Transport.Methods.Channel.OpenOkMethod>(new Transport.Methods.Channel.OpenMethod(), cancellation).ConfigureAwait(false);
-            
+
         return channel;
     }
 
@@ -69,7 +69,6 @@ internal class Connection : IConnection
         if (this.State == ConnectionState.Open)
         {
             await this.connectionChannel.SendAsync<CloseMethod, CloseOkMethod>(new CloseMethod((ushort)ReplyCode.Success, "Goodbye", 0)).ConfigureAwait(false);
-
             this.ConnectionClose(null);
         }
 
@@ -83,12 +82,13 @@ internal class Connection : IConnection
         this.socket = await EndpointResolver.OpenSocketAsync(this.connectionDetails.Settings.Endpoints, cancellation).ConfigureAwait(false);
 
         this.socketIoCancellation = new CancellationTokenSource();
-        Task.Factory.StartNew(() => this.ReceiveLoop(this.socketIoCancellation.Token), TaskCreationOptions.LongRunning);
-        Task.Factory.StartNew(this.SendLoop, TaskCreationOptions.LongRunning);
+        _ = Task.Factory.StartNew(() => this.ReceiveLoop(this.socketIoCancellation.Token), TaskCreationOptions.LongRunning);
+        _ = Task.Factory.StartNew(this.SendLoop, TaskCreationOptions.LongRunning);
 
         this.connectionChannel = this.CreateChannel(ProtocolConstants.ConnectionChannel);
+
         var connectionCloseWait = new WaitMethodMessageHandler<CloseMethod>(default);
-        connectionCloseWait.WaitTask.ContinueWith(t =>
+        _ = connectionCloseWait.WaitTask.ContinueWith(t =>
         {
             if (t.IsCompleted && !this.connectionChannel.Completion.IsCompleted)
             {
@@ -97,7 +97,7 @@ internal class Connection : IConnection
         });
 
         this.connectionChannel.WithMessageHandler(connectionCloseWait);
-        this.connectionChannel.Completion.ContinueWith(t =>
+        _ = this.connectionChannel.Completion.ContinueWith(t =>
         {
             var ex = t.Exception?.InnerException ?? t.Exception;
             this.ConnectionClose(ex);
@@ -112,9 +112,9 @@ internal class Connection : IConnection
 
         var negotiationResults = await negotiateTask.ConfigureAwait(false);
         this.connectionDetails.PopulateWithNegotiationResults(negotiationResults);
-        
+
         //Task.Factory.StartNew(() => this.HeartbeatLoop(this.socketIoCancellation.Token));
-        
+
         this.State = ConnectionState.Configuring;
         this.State = ConnectionState.Open;
     }
@@ -139,7 +139,7 @@ internal class Connection : IConnection
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                 continue;
             }
-            
+
             await this.socketSender.Writer.WriteAsync(heartbeatMemory, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -147,8 +147,8 @@ internal class Connection : IConnection
     private async Task SendLoop()
     {
         var socketChannel = this.socketSender.Reader;
-        
-        while(await socketChannel.WaitToReadAsync().ConfigureAwait(false))
+
+        while (await socketChannel.WaitToReadAsync().ConfigureAwait(false))
         {
             while (socketChannel.TryRead(out var memoryAccessor))
             {
@@ -158,8 +158,8 @@ internal class Connection : IConnection
                     await this.socket.SendAsync(current.Memory).ConfigureAwait(false);
                     current = current.Next;
                 }
-                while(current != null);
-                
+                while (current != null);
+
                 await this.socket.FlushAsync().ConfigureAwait(false);
                 this.lastMessageSentTs = DateTimeOffset.UtcNow;
 
@@ -246,7 +246,6 @@ internal class Connection : IConnection
         catch (SocketException ex)
         {
             // todo: report to diagnostic source
-
             this.ConnectionClose(ex);
         }
         catch (Exception ex)
@@ -255,15 +254,15 @@ internal class Connection : IConnection
         }
 
         return;
-        
+
         async ValueTask<SharedMemory> ReceiveNextAsync(int minBytes, SharedMemory.MemoryAccessor previousChunk = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            
+
             // Obtain next buffer
             var buffer = this.memoryPool.Get();
             var bufferOffset = 0;
-                
+
             // Copy bytes leftover from previous chunk if any
             if (previousChunk.Size > 0)
             {
@@ -271,10 +270,10 @@ internal class Connection : IConnection
                 bufferOffset = previousChunk.Size;
                 minBytes -= bufferOffset;
             }
-                
+
             // Read data from the socket at least of requested size
             var memory = new Memory<byte>(buffer, bufferOffset, buffer.Length - bufferOffset);
-            
+
             var received = await this.socket.ReceiveAsync(memory, minBytes).ConfigureAwait(false);
             return new SharedMemory(this.memoryPool, buffer, bufferOffset + received);
         }
@@ -302,7 +301,7 @@ internal class Connection : IConnection
             this.connectionStateLock.Release();
         }
     }
-    
+
     private void ConnectionClose(Exception ex)
     {
         if (this.socketIoCancellation == null || this.socketIoCancellation.IsCancellationRequested)
@@ -316,7 +315,7 @@ internal class Connection : IConnection
 
         this.channelPool.ReleaseAll(ex);
         this.connectionChannel.TryComplete(ex);
-        
+
         this.socket.Dispose();
     }
 
@@ -339,7 +338,7 @@ internal class Connection : IConnection
         var secureMethodTask = channel.WaitAsync<SecureMethod>(cancellation);
 
         await channel.SendAsync(new StartOkMethod(settings.Auth.Type, saslStartBytes, settings.Locale, settings.ClientProperties), cancellation).ConfigureAwait(false);
-        
+
         do
         {
             await Task.WhenAny(tuneMethodTask, secureMethodTask).ConfigureAwait(false);
@@ -348,12 +347,12 @@ internal class Connection : IConnection
             {
                 var secureRequest = await secureMethodTask.ConfigureAwait(false);
                 var secureResponse = await settings.Auth.HandleChallengeAsync(secureRequest.Challenge.Span).ConfigureAwait(false);
-                
+
                 // wait for another secure round-trip just in case
                 secureMethodTask = channel.WaitAsync<SecureMethod>(cancellation);
                 await channel.SendAsync(new SecureOkMethod(secureResponse), cancellation).ConfigureAwait(false);
             }
-            
+
         } while (!tuneMethodTask.IsCompleted);
 
         var tuneMethod = await tuneMethodTask.ConfigureAwait(false);
@@ -366,7 +365,7 @@ internal class Connection : IConnection
 
         // todo: handle wrong vhost name
         await channel.SendAsync<OpenMethod, OpenOkMethod>(new OpenMethod(settings.Vhost), cancellation).ConfigureAwait(false);
-        
+
         return negotiationResult;
     }
 }
